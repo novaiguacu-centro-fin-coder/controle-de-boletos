@@ -1,0 +1,27 @@
+# Segredos e configuração local
+.env
+.env.*
+!.env.example
+
+# Dependências e saídas comuns
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.venv/
+__pycache__/
+*.py[cod]
+bin/
+obj/
+
+# Logs e arquivos temporários
+*.log
+tmp/
+temp/
+.cache/
+
+# Sistema operacional e editores
+.DS_Store
+Thumbs.db
+*.swp
