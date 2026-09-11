@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentUser, hasUsers } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
   if (!(await hasUsers())) redirect("/configuracao-inicial");
   const user = await getCurrentUser();
@@ -60,7 +62,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Senha</Label>
-                <Input id="password" name="password" type="password" autoComplete="current-password" required minLength={4} className="h-12" />
+                <Input id="password" name="password" type="password" autoComplete="current-password" required minLength={12} className="h-12" />
               </div>
               <Button type="submit" className="h-12 w-full text-base">Entrar <ArrowRight className="size-4" /></Button>
             </form>

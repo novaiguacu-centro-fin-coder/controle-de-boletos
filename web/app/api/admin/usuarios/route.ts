@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   const password = String(form.get("password") ?? "");
   const role = String(form.get("role") ?? "OPERATOR") === "ADMIN" ? "ADMIN" : "OPERATOR";
   const unitGroupId = String(form.get("unitGroupId") ?? "").trim() || null;
-  if (username.length < 2 || password.length < 4 || (role === "OPERATOR" && !unitGroupId)) {
+  if (username.length < 2 || password.length < 12 || (role === "OPERATOR" && !unitGroupId)) {
     return NextResponse.redirect(new URL("/admin/usuarios?erro=dados", request.url), 303);
   }
   const id = crypto.randomUUID();

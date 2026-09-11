@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     let duplicated = 0;
     let rejected = 0;
     let totalAmountCents = 0;
-    const statements: D1PreparedStatement[] = [];
+    const statements: ReturnType<typeof db.prepare>[] = [];
     for (const record of records) {
       const unitId = unitMap.get(normalizeUnitReference(record.unitReference)) ?? null;
       const errors: string[] = [];

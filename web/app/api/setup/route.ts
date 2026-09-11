@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const username = String(form.get("username") ?? "").trim().toLocaleLowerCase("pt-BR");
     const password = String(form.get("password") ?? "");
-    if (username.length < 2 || password.length < 4) return NextResponse.redirect(new URL("/configuracao-inicial?erro=dados", request.url), 303);
+    if (username.length < 2 || password.length < 12) return NextResponse.redirect(new URL("/configuracao-inicial?erro=dados", request.url), 303);
 
     const userId = crypto.randomUUID();
     const statements = initialUnits.map(([id, name, code]) => db.prepare("INSERT INTO units (id, name, code, active) VALUES (?, ?, ?, 1)").bind(id, name, code));

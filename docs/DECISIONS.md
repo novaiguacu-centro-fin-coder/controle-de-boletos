@@ -26,3 +26,10 @@ Use este arquivo para registrar escolhas importantes de produto e arquitetura.
 - **Decisão:** cadastrar duas regras globais iniciais: R$ 60,00 menos R$ 30,00 e R$ 149,00 menos R$ 30,00, sem restrição de boleto, PIX ou cartão.
 - **Motivo:** manter o comportamento confirmado sem fixá-lo no código.
 - **Consequências:** o administrador poderá desativar ou restringir regras futuras por forma, unidade, plano e vigência. As regras iniciais, porém, alcançam todas as formas de pagamento.
+
+### 2026-09-10 — Publicação na Vercel com Turso
+
+- **Contexto:** o MVP foi criado para Cloudflare Workers/D1, mas a publicação solicitada será feita na Vercel.
+- **Decisão:** executar a aplicação em Next.js 16 nativo na Vercel e usar Turso como banco SQLite remoto, mantendo o esquema e as regras de negócio existentes.
+- **Motivo:** Next.js é suportado diretamente pela Vercel, enquanto Turso preserva a compatibilidade com SQLite e evita uma migração mais ampla para PostgreSQL.
+- **Consequências:** as consultas continuam atrás do helper de banco; a produção exige `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` e aplicação prévia das migrações por `npm run db:migrate`. A configuração específica de Cloudflare/Sites deixa de fazer parte do projeto.

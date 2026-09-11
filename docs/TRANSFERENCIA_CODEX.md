@@ -19,11 +19,12 @@ Não enviar para o GitHub arquivos de banco local, `.env`, senhas, tokens, `node
 
 ## Hospedagem
 
-O sistema usa Vinext e Cloudflare D1. A publicação recomendada é em Cloudflare Workers/D1. A Vercel exigiria adaptar a camada de banco para PostgreSQL ou outro serviço compatível antes do primeiro deploy.
+O sistema usa Next.js 16 na Vercel e Turso/SQLite para persistência. Configure `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN` na Vercel e aplique as migrações antes do primeiro acesso.
 
 ## Validação após importar na outra conta
 
 - Executar `npm install` dentro de `web`.
 - Executar `npm run typecheck` e `npm test`.
+- Executar `npm run db:migrate` com as credenciais do banco de destino.
 - Confirmar o acesso inicial em `/configuracao-inicial`.
-- Aplicar as migrações no banco de produção antes de importar dados reais.
+- Confirmar que nenhum `.env`, token ou banco local foi enviado ao GitHub.

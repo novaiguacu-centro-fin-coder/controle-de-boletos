@@ -19,8 +19,10 @@ O arquivo original `Boleto-Cartão-Pix - delta (1).xlsx` não é alterado pelo p
 
 ## Estrutura
 
-- `web/`: aplicação Vinext/React, rotas, banco D1/SQLite e testes.
+- `web/`: aplicação Next.js/React, rotas, banco Turso/SQLite e testes.
 - `docs/PRODUCT_BRIEF.md`: escopo funcional.
 - `docs/DECISIONS.md`: decisões de arquitetura e regras iniciais.
 
-O deploy e qualquer integração bancária permanecem pendentes de autorização explícita.
+## Publicação
+
+A aplicação é preparada para Vercel, com `web` como diretório raiz. O banco remoto precisa receber as migrações antes do primeiro acesso. Qualquer integração bancária permanece pendente de autorização explícita.
