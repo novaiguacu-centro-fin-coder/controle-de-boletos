@@ -34,7 +34,7 @@ for (const filename of files) {
   const statements = source
     .split("--> statement-breakpoint")
     .map((statement) => statement.trim())
-    .filter(Boolean);
+    .filter((statement) => statement && !/^PRAGMA\s+optimize\s*;?$/i.test(statement));
 
   await client.batch([
     ...statements,
