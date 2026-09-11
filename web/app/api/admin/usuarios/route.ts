@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getD1 } from "@/db";
 import { assertSameOrigin, audit, getCurrentUser } from "@/lib/auth";
+import { isValidPassword } from "@/lib/password-policy";
 import { hashPassword } from "@/lib/security";
 
 export async function POST(request: Request) {
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
   const password = String(form.get("password") ?? "");
   const role = String(form.get("role") ?? "OPERATOR") === "ADMIN" ? "ADMIN" : "OPERATOR";
   const unitGroupId = String(form.get("unitGroupId") ?? "").trim() || null;
-  if (username.length < 2 || password.length < 12 || (role === "OPERATOR" && !unitGroupId)) {
+  if (username.length < 2 || !isValidPassword(password) || (role === "OPERATOR" && !unitGroupId)) {
     return NextResponse.redirect(new URL("/admin/usuarios?erro=dados", request.url), 303);
   }
   const id = crypto.randomUUID();
