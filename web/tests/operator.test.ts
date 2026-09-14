@@ -4,7 +4,7 @@ import { getOperatorUnit, groupPaymentsByDay, toOperatorPayment } from "@/lib/op
 describe("segurança do operador", () => {
   it("expõe somente os campos necessários", () => {
     const dto = toOperatorPayment({ id: "1", payerName: "Maria", document: "12345678901", paymentDate: "2026-09-01", paymentMethod: "PIX", amountToSettleCents: 11900, originalAmountCents: 14900, deductionAmountCents: 3000, ruleId: "r", unitId: "B" });
-    expect(dto).toEqual({ id: "1", payerName: "Maria", document: "123.***.***-01", paymentDate: "2026-09-01", paymentMethod: "PIX", amountToSettleCents: 11900 });
+    expect(dto).toEqual({ id: "1", payerName: "Maria", document: "12345678901", paymentDate: "2026-09-01", paymentMethod: "PIX", amountToSettleCents: 11900 });
     expect(dto).not.toHaveProperty("originalAmountCents");
     expect(dto).not.toHaveProperty("deductionAmountCents");
     expect(dto).not.toHaveProperty("unitId");

@@ -33,3 +33,10 @@ Use este arquivo para registrar escolhas importantes de produto e arquitetura.
 - **Decisão:** executar a aplicação em Next.js 16 nativo na Vercel e usar Turso como banco SQLite remoto, mantendo o esquema e as regras de negócio existentes.
 - **Motivo:** Next.js é suportado diretamente pela Vercel, enquanto Turso preserva a compatibilidade com SQLite e evita uma migração mais ampla para PostgreSQL.
 - **Consequências:** as consultas continuam atrás do helper de banco; a produção exige `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` e aplicação prévia das migrações por `npm run db:migrate`. A configuração específica de Cloudflare/Sites deixa de fazer parte do projeto.
+
+### 2026-09-14 — Preservação integral da origem e consultas em grande volume
+
+- **Contexto:** a base deverá ultrapassar 500.000 lançamentos, sem alterar as cinco colunas exibidas ao operador, mas todas as colunas recebidas precisam permanecer disponíveis no banco.
+- **Decisão:** armazenar os cabeçalhos originais uma vez em cada lote (`source_headers`) e os valores completos de cada linha em cada pagamento (`source_values`), ambos como JSON. A listagem operacional passa a usar paginação e resumo agregado no banco, com índice composto por unidade, situação e data. A verificação de duplicidade consulta somente as chaves presentes no lote recebido.
+- **Motivo:** preservar fielmente arquivos com formatos variáveis sem criar uma coluna física nova a cada banco, reduzir leitura e memória nas consultas e manter a interface operacional estável.
+- **Consequências:** novos lotes mantêm todas as colunas originais; as cinco colunas visíveis não mudam. Arquivos são limitados a 4 MB e 100.000 linhas por lote, portanto cargas maiores precisam ser fracionadas. Registros antigos continuam intactos, mas colunas que não eram armazenadas antes não podem ser reconstruídas sem os arquivos de origem.

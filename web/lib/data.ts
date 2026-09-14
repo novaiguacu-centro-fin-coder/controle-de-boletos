@@ -6,11 +6,13 @@ import { getOperatorUnit, toOperatorPayment } from "@/lib/operator";
 
 export type SearchValues = Record<string, string | string[] | undefined>;
 
+export const OPERATOR_PAGE_SIZE = 100;
+
 function one(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
-export async function getOperatorPayments(user: AppUser, search: SearchValues) {
+function getOperatorPaymentFilter(user: AppUser, search: SearchValues) {
   const authorizedUnitGroupId = getOperatorUnit(user);
   const clauses = ["unit_id IN (SELECT id FROM units WHERE group_id = ?)", "status = 'LIBERADO'"];
   const values: unknown[] = [authorizedUnitGroupId];
@@ -25,18 +27,54 @@ export async function getOperatorPayments(user: AppUser, search: SearchValues) {
   if (name) { clauses.push("payer_name LIKE ?"); values.push(`%${name}%`); }
   if (document) { clauses.push("REPLACE(REPLACE(REPLACE(document, '.', ''), '-', ''), '/', '') LIKE ?"); values.push(`%${document}%`); }
   const sort = one(search.sort) === "name" ? "payer_name COLLATE NOCASE, payment_date" : "payment_date, payer_name COLLATE NOCASE";
+  return { clauses, values, sort };
+}
+
+export async function getOperatorPaymentSummary(user: AppUser, search: SearchValues) {
+  const { clauses, values } = getOperatorPaymentFilter(user, search);
+  const result = await getD1().prepare(`
+    SELECT COUNT(*) AS totalCount, COALESCE(SUM(amount_to_settle_cents), 0) AS totalAmountToSettleCents
+    FROM payments
+    WHERE ${clauses.join(" AND ")}
+  `).bind(...values).first<{ totalCount: number; totalAmountToSettleCents: number }>();
+  return {
+    totalCount: Number(result?.totalCount ?? 0),
+    totalAmountToSettleCents: Number(result?.totalAmountToSettleCents ?? 0),
+  };
+}
+
+export async function getOperatorPayments(
+  user: AppUser,
+  search: SearchValues,
+  options: { limit?: number; offset?: number } = {},
+) {
+  const { clauses, values, sort } = getOperatorPaymentFilter(user, search);
+  const limit = Math.max(1, Math.min(2000, Math.trunc(options.limit ?? 2000)));
+  const offset = Math.max(0, Math.trunc(options.offset ?? 0));
   const result = await getD1().prepare(`
     SELECT id, payer_name AS payerName, document, payment_date AS paymentDate,
       payment_method AS paymentMethod, amount_to_settle_cents AS amountToSettleCents
     FROM payments
     WHERE ${clauses.join(" AND ")}
     ORDER BY ${sort}
-    LIMIT 2000
-  `).bind(...values).all<{
+    LIMIT ? OFFSET ?
+  `).bind(...values, limit, offset).all<{
     id: string; payerName: string; document: string; paymentDate: string;
     paymentMethod: string; amountToSettleCents: number;
   }>();
   return result.results.map(toOperatorPayment);
+}
+
+export async function getOperatorPaymentPage(user: AppUser, search: SearchValues) {
+  const summary = await getOperatorPaymentSummary(user, search);
+  const requestedPage = Number.parseInt(one(search.page), 10);
+  const totalPages = Math.max(1, Math.ceil(summary.totalCount / OPERATOR_PAGE_SIZE));
+  const page = Math.min(Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1, totalPages);
+  const payments = await getOperatorPayments(user, search, {
+    limit: OPERATOR_PAGE_SIZE,
+    offset: (page - 1) * OPERATOR_PAGE_SIZE,
+  });
+  return { payments, summary, page, totalPages };
 }
 
 export async function getUnits() {

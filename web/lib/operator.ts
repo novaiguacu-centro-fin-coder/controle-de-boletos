@@ -17,17 +17,11 @@ export function getOperatorUnit(user: { role: string; unitGroupId?: string | nul
   return groupId;
 }
 
-export function maskDocument(document: string): string {
-  const digits = document.replace(/\D/g, "");
-  if (digits.length < 5) return document ? "***" : "";
-  return `${digits.slice(0, 3)}.***.***-${digits.slice(-2)}`;
-}
-
 export function toOperatorPayment(payment: InternalPayment) {
   return {
     id: payment.id,
     payerName: payment.payerName,
-    document: maskDocument(payment.document),
+    document: payment.document,
     paymentDate: payment.paymentDate,
     paymentMethod: payment.paymentMethod,
     amountToSettleCents: payment.amountToSettleCents,

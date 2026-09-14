@@ -12,6 +12,12 @@ export type ImportedPayment = {
   plan: string | null;
   originalAmountCents: number | null;
   unitReference: string;
+  sourceValues: string[];
+};
+
+export type ParsedImportFile = {
+  sourceHeaders: string[];
+  records: ImportedPayment[];
 };
 
 function cleanHeader(value: unknown): string {
@@ -135,9 +141,9 @@ function paymentMethod(value: string): string {
   return value.trim().toLocaleUpperCase("pt-BR") || "NAO_INFORMADO";
 }
 
-export function parseImportFile(filename: string, bytes: Uint8Array): ImportedPayment[] {
+export function parseImportFile(filename: string, bytes: Uint8Array): ParsedImportFile {
   const rows = filename.toLowerCase().endsWith(".xlsx") ? parseXlsx(bytes) : parseCsv(new TextDecoder("utf-8").decode(bytes).replace(/^\uFEFF/, ""));
-  if (!rows.length) return [];
+  if (!rows.length) return { sourceHeaders: [], records: [] };
   let headerIndex = -1;
   let headers = new Map<string, number>();
   let bestScore = -1;
@@ -148,7 +154,10 @@ export function parseImportFile(filename: string, bytes: Uint8Array): ImportedPa
   }
   if (headerIndex < 0) throw new Error("Não foi possível identificar os cabeçalhos do arquivo.");
 
-  return rows.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim())).map((row) => ({
+  const dataRows = rows.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
+  const columnCount = Math.max(rows[headerIndex].length, ...dataRows.map((row) => row.length));
+  const sourceHeaders = Array.from({ length: columnCount }, (_, index) => String(rows[headerIndex][index] ?? "").trim() || `Coluna ${index + 1}`);
+  const records = dataRows.map((row) => ({
     bankTransactionId: valueAt(row, headers, ALIASES.bankTransactionId) || null,
     payerName: valueAt(row, headers, ALIASES.payerName),
     document: valueAt(row, headers, ALIASES.document),
@@ -158,7 +167,9 @@ export function parseImportFile(filename: string, bytes: Uint8Array): ImportedPa
     plan: valueAt(row, headers, ALIASES.plan) || null,
     originalAmountCents: parseMoneyToCents(valueAt(row, headers, ALIASES.amount)),
     unitReference: valueAt(row, headers, ALIASES.unit),
+    sourceValues: Array.from({ length: columnCount }, (_, index) => String(row[index] ?? "")),
   }));
+  return { sourceHeaders, records };
 }
 
 export function normalizeUnitReference(value: string): string {

@@ -69,6 +69,7 @@ export const importBatches = sqliteTable("import_batches", {
   rejectedRecords: integer("rejected_records").notNull().default(0),
   totalAmountCents: integer("total_amount_cents").notNull().default(0),
   status: text("status").notNull(),
+  sourceHeaders: text("source_headers").notNull().default("[]"),
 });
 
 export const payments = sqliteTable("payments", {
@@ -88,6 +89,7 @@ export const payments = sqliteTable("payments", {
   ruleId: text("rule_id").references(() => deductionRules.id),
   importBatchId: text("import_batch_id").notNull().references(() => importBatches.id),
   sourceFilename: text("source_filename").notNull(),
+  sourceValues: text("source_values").notNull().default("[]"),
   status: text("status").notNull(),
   rejectionReason: text("rejection_reason"),
   createdAt: text("created_at").notNull().default(now),
@@ -96,6 +98,7 @@ export const payments = sqliteTable("payments", {
   index("idx_payments_bank_transaction").on(table.bankTransactionId),
   index("idx_payments_duplicate_key").on(table.duplicateKey),
   index("idx_payments_unit_date_status").on(table.unitId, table.paymentDate, table.status),
+  index("idx_payments_unit_status_date").on(table.unitId, table.status, table.paymentDate),
   index("idx_payments_batch_id").on(table.importBatchId),
 ]);
 
