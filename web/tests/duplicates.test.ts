@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { buildDuplicateKey } from "@/lib/duplicates";
 
 describe("duplicidades", () => {
-  it("gera a mesma chave para o mesmo identificador bancário", async () => {
-    const one = await buildDuplicateKey({ bankTransactionId: "ABC-1", unitId: "A", document: "1", originalAmountCents: 100, paymentDate: "2026-09-01" });
-    const two = await buildDuplicateKey({ bankTransactionId: "abc-1", unitId: "B", document: "2", originalAmountCents: 200, paymentDate: "2026-09-02" });
+  const base = { paymentReference: "2026-09-01T10:30:00", chargeId: "C-1", sourceUuid: "UUID-1", storeName: "Loja A", transactionKey: "KEY-1" };
+
+  it("normaliza maiúsculas e espaços nos cinco identificadores", async () => {
+    const one = await buildDuplicateKey(base);
+    const two = await buildDuplicateKey({ paymentReference: " 2026-09-01t10:30:00 ", chargeId: " c-1 ", sourceUuid: "uuid-1", storeName: "loja a", transactionKey: "key-1" });
     expect(one).toBe(two);
   });
-  it("usa a combinação unidade, documento, valor e data quando não há id bancário", async () => {
-    const base = { bankTransactionId: null, unitId: "A", document: "123.456.789-01", originalAmountCents: 14900, paymentDate: "2026-09-01" };
-    expect(await buildDuplicateKey(base)).toBe(await buildDuplicateKey({ ...base, document: "12345678901" }));
-    expect(await buildDuplicateKey(base)).not.toBe(await buildDuplicateKey({ ...base, unitId: "B" }));
+
+  it.each(["paymentReference", "chargeId", "sourceUuid", "storeName", "transactionKey"] as const)("considera nova transação quando %s muda", async (field) => {
+    expect(await buildDuplicateKey(base)).not.toBe(await buildDuplicateKey({ ...base, [field]: `${base[field]}-OUTRO` }));
   });
 });

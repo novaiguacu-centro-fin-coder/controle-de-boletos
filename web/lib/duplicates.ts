@@ -1,15 +1,13 @@
 import { sha256 } from "@/lib/security";
 
 export async function buildDuplicateKey(input: {
-  bankTransactionId: string | null;
-  unitId: string | null;
-  document: string;
-  originalAmountCents: number;
-  paymentDate: string;
+  paymentReference: string;
+  chargeId: string;
+  sourceUuid: string;
+  storeName: string;
+  transactionKey: string;
 }) {
-  const bankId = input.bankTransactionId?.trim().toLocaleUpperCase("pt-BR");
-  const document = input.document.replace(/\D/g, "");
-  return sha256(bankId
-    ? `bank:${bankId}`
-    : `fallback:${input.unitId ?? "?"}|${document}|${input.originalAmountCents}|${input.paymentDate}`);
+  const normalized = [input.paymentReference, input.chargeId, input.sourceUuid, input.storeName, input.transactionKey]
+    .map((value) => value.normalize("NFKC").trim().toLocaleUpperCase("pt-BR"));
+  return sha256(`payment-v2:${normalized.join("|")}`);
 }

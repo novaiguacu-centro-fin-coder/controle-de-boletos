@@ -4,9 +4,14 @@ import { parseMoneyToCents } from "@/lib/money";
 
 export type ImportedPayment = {
   bankTransactionId: string | null;
+  chargeId: string;
+  sourceUuid: string;
+  storeName: string;
+  transactionKey: string;
   payerName: string;
   document: string;
   paymentDate: string | null;
+  paymentReference: string | null;
   compensationDate: string | null;
   paymentMethod: string;
   plan: string | null;
@@ -99,6 +104,10 @@ function parseXlsx(bytes: Uint8Array): string[][] {
 
 const ALIASES = {
   bankTransactionId: ["iddatransacao", "identificadorbancario", "idtransacao", "nsu", "uuid"],
+  chargeId: ["iddacobranca", "idcobranca"],
+  sourceUuid: ["uuid"],
+  storeName: ["nomedaloja", "loja"],
+  transactionKey: ["chavedatransacao", "chavetransacao"],
   payerName: ["nome", "nomedocliente", "nomedopagador", "cliente", "pagador"],
   document: ["documentodocliente", "documento", "cpfcnpj", "cpf", "cnpj"],
   paymentDate: ["datadepagamento", "datadatransacao", "datapagamento", "data"],
@@ -133,6 +142,25 @@ function excelDate(value: string): string | null {
   return null;
 }
 
+function paymentReference(value: string): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (iso) return iso[4]
+    ? `${iso[1]}-${iso[2]}-${iso[3]}T${iso[4].padStart(2, "0")}:${iso[5]}:${iso[6] ?? "00"}`
+    : `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (br) return br[4]
+    ? `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}T${br[4].padStart(2, "0")}:${br[5]}:${br[6] ?? "00"}`
+    : `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+  const serial = Number(raw.replace(",", "."));
+  if (Number.isFinite(serial) && serial > 20_000 && serial < 100_000) {
+    const date = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000);
+    return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
+  return null;
+}
+
 function paymentMethod(value: string): string {
   const canonical = cleanHeader(value);
   if (canonical.includes("pix")) return "PIX";
@@ -157,18 +185,26 @@ export function parseImportFile(filename: string, bytes: Uint8Array): ParsedImpo
   const dataRows = rows.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
   const columnCount = Math.max(rows[headerIndex].length, ...dataRows.map((row) => row.length));
   const sourceHeaders = Array.from({ length: columnCount }, (_, index) => String(rows[headerIndex][index] ?? "").trim() || `Coluna ${index + 1}`);
-  const records = dataRows.map((row) => ({
-    bankTransactionId: valueAt(row, headers, ALIASES.bankTransactionId) || null,
-    payerName: valueAt(row, headers, ALIASES.payerName),
-    document: valueAt(row, headers, ALIASES.document),
-    paymentDate: excelDate(valueAt(row, headers, ALIASES.paymentDate)),
-    compensationDate: excelDate(valueAt(row, headers, ALIASES.compensationDate)),
-    paymentMethod: paymentMethod(valueAt(row, headers, ALIASES.paymentMethod)),
-    plan: valueAt(row, headers, ALIASES.plan) || null,
-    originalAmountCents: parseMoneyToCents(valueAt(row, headers, ALIASES.amount)),
-    unitReference: valueAt(row, headers, ALIASES.unit),
-    sourceValues: Array.from({ length: columnCount }, (_, index) => String(row[index] ?? "")),
-  }));
+  const records = dataRows.map((row) => {
+    const rawPaymentDate = valueAt(row, headers, ALIASES.paymentDate);
+    return {
+      bankTransactionId: valueAt(row, headers, ALIASES.bankTransactionId) || null,
+      chargeId: valueAt(row, headers, ALIASES.chargeId),
+      sourceUuid: valueAt(row, headers, ALIASES.sourceUuid),
+      storeName: valueAt(row, headers, ALIASES.storeName),
+      transactionKey: valueAt(row, headers, ALIASES.transactionKey),
+      payerName: valueAt(row, headers, ALIASES.payerName),
+      document: valueAt(row, headers, ALIASES.document),
+      paymentDate: excelDate(rawPaymentDate),
+      paymentReference: paymentReference(rawPaymentDate),
+      compensationDate: excelDate(valueAt(row, headers, ALIASES.compensationDate)),
+      paymentMethod: paymentMethod(valueAt(row, headers, ALIASES.paymentMethod)),
+      plan: valueAt(row, headers, ALIASES.plan) || null,
+      originalAmountCents: parseMoneyToCents(valueAt(row, headers, ALIASES.amount)),
+      unitReference: valueAt(row, headers, ALIASES.unit),
+      sourceValues: Array.from({ length: columnCount }, (_, index) => String(row[index] ?? "")),
+    };
+  });
   return { sourceHeaders, records };
 }
 

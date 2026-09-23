@@ -42,8 +42,9 @@ Para produção, configure as variáveis no provedor de hospedagem e execute `np
 - Cada lote aceita CSV ou XLSX de até 4 MB e até 100.000 lançamentos. Volumes maiores devem ser divididos em lotes.
 - Os cabeçalhos originais são armazenados no lote e todos os valores de cada linha são preservados no pagamento, inclusive colunas que não aparecem na tela operacional.
 - A tela operacional mantém apenas Data, Nome, Documento, Forma de pagamento e Valor a baixar, com paginação de 100 itens e resumo calculado sobre todo o filtro.
-- A consulta de duplicidades busca somente as chaves do lote recebido e a listagem usa índice por unidade, situação e data, evitando carregar a base inteira em memória.
-- Registros importados antes da migração `0004_preserve_source_columns.sql` permanecem intactos, mas não ganham retroativamente colunas que o sistema antigo não armazenou.
+- Uma movimentação só é duplicada quando Data de Pagamento, Id da Cobrança, UUID, Nome da Loja e Chave da Transação coincidem. A primeira ocorrência fica válida e apenas as seguintes são desconsideradas como duplicadas.
+- Se faltar qualquer um desses cinco campos, o lançamento vai para exceção e não reserva uma chave de duplicidade. CPF, unidade, valor e Id da Transação não são usados nesse critério.
+- A consulta de duplicidades busca somente as chaves do lote recebido e considera como referência os pagamentos canônicos (`VALIDADO`, `LIBERADO` ou `BAIXADO`). A listagem usa índice por unidade, situação e data, evitando carregar a base inteira em memória.
 
 ## Vercel
 

@@ -13,13 +13,14 @@ const MAX_IMPORT_FILE_SIZE = 4 * 1024 * 1024;
 const MAX_IMPORT_RECORDS = 100_000;
 const LOOKUP_CHUNK_SIZE = 500;
 
-async function loadExistingValues(database: Database, column: "bank_transaction_id" | "duplicate_key", values: string[]) {
+async function loadExistingDuplicateKeys(database: Database, values: string[]) {
   const existing = new Set<string>();
   const uniqueValues = [...new Set(values.filter(Boolean))];
   for (let index = 0; index < uniqueValues.length; index += LOOKUP_CHUNK_SIZE) {
     const chunk = uniqueValues.slice(index, index + LOOKUP_CHUNK_SIZE);
     const placeholders = chunk.map(() => "?").join(",");
-    const rows = (await database.prepare(`SELECT ${column} AS value FROM payments WHERE ${column} IN (${placeholders})`)
+    const rows = (await database.prepare(`SELECT duplicate_key AS value FROM payments
+      WHERE duplicate_key IN (${placeholders}) AND status IN ('VALIDADO', 'LIBERADO', 'BAIXADO')`)
       .bind(...chunk).all<{ value: string }>()).results;
     for (const row of rows) existing.add(row.value);
   }
@@ -62,40 +63,52 @@ export async function POST(request: Request) {
       if (!record.payerName) errors.push("Nome não informado");
       if (!record.document) errors.push("Documento não informado");
       if (!record.paymentDate) errors.push("Data de pagamento inválida");
+      if (!record.paymentReference) errors.push("Referência da data de pagamento inválida");
+      if (!record.chargeId) errors.push("Id da Cobrança não informado");
+      if (!record.sourceUuid) errors.push("UUID não informado");
+      if (!record.storeName) errors.push("Nome da Loja não informado");
+      if (!record.transactionKey) errors.push("Chave da Transação não informada");
       if (record.originalAmountCents === null || record.originalAmountCents < 0) errors.push("Valor inválido");
       if (!unitId) errors.push("Unidade não identificada");
       if (record.paymentMethod === "NAO_INFORMADO") errors.push("Forma de pagamento não informada");
       const safeDate = record.paymentDate ?? "1970-01-01";
       const safeAmount = record.originalAmountCents ?? 0;
-      const duplicateKey = await buildDuplicateKey({ bankTransactionId: record.bankTransactionId, unitId, document: record.document, originalAmountCents: safeAmount, paymentDate: safeDate });
+      const hasDuplicateIdentity = Boolean(record.paymentReference && record.chargeId && record.sourceUuid && record.storeName && record.transactionKey);
+      const duplicateKey = await buildDuplicateKey({
+        paymentReference: record.paymentReference ?? "",
+        chargeId: record.chargeId,
+        sourceUuid: record.sourceUuid,
+        storeName: record.storeName,
+        transactionKey: record.transactionKey,
+      });
       const applied = applyDeductionRules({ originalAmountCents: safeAmount, paymentMethod: record.paymentMethod, unitId, plan: record.plan, paymentDate: safeDate }, rules);
-      return { record, unitId, errors, safeDate, safeAmount, duplicateKey, applied };
+      return { record, unitId, errors, safeDate, safeAmount, duplicateKey, hasDuplicateIdentity, applied };
     }));
-    const [bankIds, duplicateKeys] = await Promise.all([
-      loadExistingValues(db, "bank_transaction_id", preparedRecords.map(({ record }) => record.bankTransactionId ?? "")),
-      loadExistingValues(db, "duplicate_key", preparedRecords.map(({ duplicateKey }) => duplicateKey)),
-    ]);
+    const duplicateKeys = await loadExistingDuplicateKeys(db, preparedRecords
+      .filter(({ hasDuplicateIdentity }) => hasDuplicateIdentity)
+      .map(({ duplicateKey }) => duplicateKey));
 
     let valid = 0;
     let duplicated = 0;
     let rejected = 0;
     let totalAmountCents = 0;
     const statements: ReturnType<typeof db.prepare>[] = [];
-    for (const { record, unitId, errors, safeDate, safeAmount, duplicateKey, applied } of preparedRecords) {
-      const isDuplicate = record.bankTransactionId ? bankIds.has(record.bankTransactionId) : duplicateKeys.has(duplicateKey);
+    for (const { record, unitId, errors, safeDate, safeAmount, duplicateKey, hasDuplicateIdentity, applied } of preparedRecords) {
+      const isDuplicate = hasDuplicateIdentity && duplicateKeys.has(duplicateKey);
       let status = "VALIDADO";
       if (errors.length) { status = "EXCECAO"; rejected += 1; }
       else if (isDuplicate) { status = "DUPLICADO"; duplicated += 1; }
       else valid += 1;
-      if (record.bankTransactionId) bankIds.add(record.bankTransactionId);
-      duplicateKeys.add(duplicateKey);
+      if (status === "VALIDADO") duplicateKeys.add(duplicateKey);
       totalAmountCents += safeAmount;
       statements.push(db.prepare(`INSERT INTO payments
-        (id, bank_transaction_id, duplicate_key, payer_name, document, payment_date, compensation_date,
+        (id, bank_transaction_id, duplicate_key, charge_id, source_uuid, store_name, transaction_key, payment_reference,
+         payer_name, document, payment_date, compensation_date,
          payment_method, plan, original_amount_cents, deduction_amount_cents, amount_to_settle_cents,
          unit_id, rule_id, import_batch_id, source_filename, source_values, status, rejection_reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(crypto.randomUUID(), record.bankTransactionId, duplicateKey, record.payerName || "Não informado", record.document,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(crypto.randomUUID(), record.bankTransactionId, duplicateKey, record.chargeId, record.sourceUuid,
+          record.storeName, record.transactionKey, record.paymentReference, record.payerName || "Não informado", record.document,
           safeDate, record.compensationDate, record.paymentMethod, record.plan, safeAmount, applied.deductionAmountCents,
           applied.amountToSettleCents, unitId, applied.ruleId, batchId, file.name, JSON.stringify(record.sourceValues), status, errors.join("; ") || null));
     }
