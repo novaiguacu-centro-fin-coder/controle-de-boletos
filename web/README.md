@@ -49,3 +49,7 @@ Para produção, configure as variáveis no provedor de hospedagem e execute `np
 ## Vercel
 
 Use `web` como diretório raiz do projeto. A Vercel detecta Next.js e executa `npm run build`. As credenciais do Turso devem ser cadastradas nos ambientes Production, Preview e Development conforme necessário.
+
+### Segurança contra importações simultâneas
+
+A identificação da duplicidade é feita na mesma instrução que grava o pagamento. Isso preserva uma ocorrência válida mesmo quando dois envios do mesmo arquivo se sobrepõem. Repetições continuam armazenadas como DUPLICADO, e os totais de classificação refletem os registros gravados. A mudança não corrige retroativamente situações existentes nem altera a chave de identificação. Validação: `npm test`, incluindo `tests/import-status.test.ts`.

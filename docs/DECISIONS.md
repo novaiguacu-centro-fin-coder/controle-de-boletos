@@ -47,3 +47,9 @@ Use este arquivo para registrar escolhas importantes de produto e arquitetura.
 - **Decisão:** uma movimentação só é duplicada quando coincidem, após normalização, Data de Pagamento, Id da Cobrança, UUID, Nome da Loja e Chave da Transação. A primeira ocorrência permanece `VALIDADO`; somente as ocorrências posteriores recebem `DUPLICADO`. Se qualquer um dos cinco campos estiver ausente ou inválido, o registro recebe `EXCECAO` para revisão, sem reservar uma chave de duplicidade. CPF, unidade, valor e Id da Transação não participam dessa decisão.
 - **Motivo:** os cinco campos juntos preservam a particularidade da transação e evitam rejeitar pagamentos legítimos recorrentes.
 - **Consequências:** as cinco informações passam a ter colunas próprias, além da preservação integral de `source_headers` e `source_values`. Para eliminar o legado incompleto, os lotes e pagamentos importados serão removidos após backup verificável; usuários, unidades, regras e auditoria permanecem intactos.
+
+### Importações concorrentes — 22/10/2026
+
+A classificação de duplicidade agora ocorre dentro do próprio INSERT, consultando a existência de uma ocorrência VALIDADO, LIBERADO ou BAIXADO na mesma escrita atômica. A leitura antecipada em memória foi removida: duas importações sobrepostas podiam considerar a mesma chave inédita. Os contadores do lote são calculados a partir das situações efetivamente gravadas. A chave de cinco campos e a prioridade de EXCECAO permanecem as mesmas.
+
+A alteração não reclassifica registros existentes e não requer migração. A auditoria encontrou dez chaves repetidas entre registros liberados; sua regularização deve ser aprovada separadamente, com backup e trilha de auditoria. O teste de regressão usa banco libSQL local, simula leituras iniciais vazias e lotes concorrentes, além de reimportação e situações anteriores.

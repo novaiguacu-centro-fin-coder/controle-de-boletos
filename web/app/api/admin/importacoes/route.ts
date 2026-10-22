@@ -3,29 +3,13 @@ import { NextResponse } from "next/server";
 import { getD1 } from "@/db";
 import { assertSameOrigin, audit, getCurrentUser } from "@/lib/auth";
 import { buildDuplicateKey } from "@/lib/duplicates";
+import { IMPORT_STATUS_SQL } from "@/lib/import-status";
 import { normalizeUnitReference, parseImportFile } from "@/lib/importer";
 import { applyDeductionRules, type RuleCandidate } from "@/lib/rules";
 
 type UnitRow = { id: string; name: string; code: string };
-type Database = ReturnType<typeof getD1>;
-
 const MAX_IMPORT_FILE_SIZE = 4 * 1024 * 1024;
 const MAX_IMPORT_RECORDS = 100_000;
-const LOOKUP_CHUNK_SIZE = 500;
-
-async function loadExistingDuplicateKeys(database: Database, values: string[]) {
-  const existing = new Set<string>();
-  const uniqueValues = [...new Set(values.filter(Boolean))];
-  for (let index = 0; index < uniqueValues.length; index += LOOKUP_CHUNK_SIZE) {
-    const chunk = uniqueValues.slice(index, index + LOOKUP_CHUNK_SIZE);
-    const placeholders = chunk.map(() => "?").join(",");
-    const rows = (await database.prepare(`SELECT duplicate_key AS value FROM payments
-      WHERE duplicate_key IN (${placeholders}) AND status IN ('VALIDADO', 'LIBERADO', 'BAIXADO')`)
-      .bind(...chunk).all<{ value: string }>()).results;
-    for (const row of rows) existing.add(row.value);
-  }
-  return existing;
-}
 
 export async function POST(request: Request) {
   let batchId: string | null = null;
@@ -73,7 +57,6 @@ export async function POST(request: Request) {
       if (record.paymentMethod === "NAO_INFORMADO") errors.push("Forma de pagamento não informada");
       const safeDate = record.paymentDate ?? "1970-01-01";
       const safeAmount = record.originalAmountCents ?? 0;
-      const hasDuplicateIdentity = Boolean(record.paymentReference && record.chargeId && record.sourceUuid && record.storeName && record.transactionKey);
       const duplicateKey = await buildDuplicateKey({
         paymentReference: record.paymentReference ?? "",
         chargeId: record.chargeId,
@@ -82,37 +65,34 @@ export async function POST(request: Request) {
         transactionKey: record.transactionKey,
       });
       const applied = applyDeductionRules({ originalAmountCents: safeAmount, paymentMethod: record.paymentMethod, unitId, plan: record.plan, paymentDate: safeDate }, rules);
-      return { record, unitId, errors, safeDate, safeAmount, duplicateKey, hasDuplicateIdentity, applied };
+      return { record, unitId, errors, safeDate, safeAmount, duplicateKey, applied };
     }));
-    const duplicateKeys = await loadExistingDuplicateKeys(db, preparedRecords
-      .filter(({ hasDuplicateIdentity }) => hasDuplicateIdentity)
-      .map(({ duplicateKey }) => duplicateKey));
-
-    let valid = 0;
-    let duplicated = 0;
-    let rejected = 0;
     let totalAmountCents = 0;
     const statements: ReturnType<typeof db.prepare>[] = [];
-    for (const { record, unitId, errors, safeDate, safeAmount, duplicateKey, hasDuplicateIdentity, applied } of preparedRecords) {
-      const isDuplicate = hasDuplicateIdentity && duplicateKeys.has(duplicateKey);
-      let status = "VALIDADO";
-      if (errors.length) { status = "EXCECAO"; rejected += 1; }
-      else if (isDuplicate) { status = "DUPLICADO"; duplicated += 1; }
-      else valid += 1;
-      if (status === "VALIDADO") duplicateKeys.add(duplicateKey);
+    for (const { record, unitId, errors, safeDate, safeAmount, duplicateKey, applied } of preparedRecords) {
+      const candidateStatus = errors.length ? "EXCECAO" : "VALIDADO";
       totalAmountCents += safeAmount;
       statements.push(db.prepare(`INSERT INTO payments
         (id, bank_transaction_id, duplicate_key, charge_id, source_uuid, store_name, transaction_key, payment_reference,
          payer_name, document, payment_date, compensation_date,
          payment_method, plan, original_amount_cents, deduction_amount_cents, amount_to_settle_cents,
          unit_id, rule_id, import_batch_id, source_filename, source_values, status, rejection_reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${IMPORT_STATUS_SQL}, ?)`)
         .bind(crypto.randomUUID(), record.bankTransactionId, duplicateKey, record.chargeId, record.sourceUuid,
           record.storeName, record.transactionKey, record.paymentReference, record.payerName || "Não informado", record.document,
           safeDate, record.compensationDate, record.paymentMethod, record.plan, safeAmount, applied.deductionAmountCents,
-          applied.amountToSettleCents, unitId, applied.ruleId, batchId, file.name, JSON.stringify(record.sourceValues), status, errors.join("; ") || null));
+          applied.amountToSettleCents, unitId, applied.ruleId, batchId, file.name, JSON.stringify(record.sourceValues), candidateStatus, duplicateKey, errors.join("; ") || null));
     }
     for (let index = 0; index < statements.length; index += 75) await db.batch(statements.slice(index, index + 75));
+    const counts = await db.prepare(`SELECT
+      SUM(CASE WHEN status = 'VALIDADO' THEN 1 ELSE 0 END) AS valid,
+      SUM(CASE WHEN status = 'DUPLICADO' THEN 1 ELSE 0 END) AS duplicated,
+      SUM(CASE WHEN status = 'EXCECAO' THEN 1 ELSE 0 END) AS rejected
+      FROM payments WHERE import_batch_id = ?`).bind(batchId)
+      .first<{ valid: number | null; duplicated: number | null; rejected: number | null }>();
+    const valid = Number(counts?.valid ?? 0);
+    const duplicated = Number(counts?.duplicated ?? 0);
+    const rejected = Number(counts?.rejected ?? 0);
     const finalStatus = rejected || duplicated ? "CONCLUIDO_COM_ALERTAS" : "CONCLUIDO";
     await db.prepare(`UPDATE import_batches SET total_records = ?, valid_records = ?, duplicate_records = ?,
       rejected_records = ?, total_amount_cents = ?, status = ? WHERE id = ?`)
